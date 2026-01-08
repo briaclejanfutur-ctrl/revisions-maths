@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>APEX // SECURE GATEWAY</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background: #050505; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; }
+        #top-bar { height: 60px; background: rgba(0,0,0,0.9); border-bottom: 1px solid #1a1a1a; display: flex; align-items: center; padding: 0 20px; gap: 20px; z-index: 100; }
+        iframe { width: 100vw; height: calc(100vh - 60px); border: none; background: #fff; }
+        .neon-input { background: #0a0a0a; border: 1px solid #333; color: #00ffcc; transition: 0.3s; }
+        .neon-input:focus { border-color: #00ffcc; box-shadow: 0 0 10px rgba(0,255,204,0.2); }
+        #panic { position: fixed; inset: 0; background: white; z-index: 9999; display: none; }
+    </style>
+</head>
+<body class="flex flex-col">
+
+<div id="top-bar">
+    <div class="text-[#00ffcc] font-black tracking-tighter text-xl">APEX</div>
+    <div class="flex-1 flex gap-2">
+        <input type="text" id="target" placeholder="DESTINATION URL..." class="flex-1 neon-input rounded-md px-4 py-1 text-sm outline-none">
+        <button onclick="launch()" class="bg-[#00ffcc] text-black font-bold px-6 py-1 rounded-md text-sm hover:brightness-110 transition-all">CONNECT</button>
+    </div>
+</div>
+
+<div id="intro" class="flex-1 flex flex-col items-center justify-center text-zinc-800">
+    <div class="text-9xl font-black italic select-none">STLTH</div>
+    <div class="text-xs tracking-[1em] mt-4">ENCRYPTED DATA TUNNEL v3.0</div>
+</div>
+
+<iframe id="screen" class="hidden"></iframe>
+
+<!-- PANIC SCREEN -->
+<div id="panic"><iframe src="https://www.wikipedia.org" class="w-full h-full"></iframe></div>
+
+<script>
+    function launch() {
+        let url = document.getElementById('target').value;
+        if(!url) return;
+        if(!url.startsWith('http')) url = 'https://' + url;
+
+        // XOR Encryption + Base64
+        const xored = url.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ 42)).join('');
+        const encoded = btoa(xored);
+
+        document.getElementById('intro').style.display = 'none';
+        const screen = document.getElementById('screen');
+        screen.classList.remove('hidden');
+        screen.src = `/main/${encodeURIComponent(encoded)}`;
+    }
+
+    // TOUCHE PANIQUE : Appuie sur 'P' pour switcher sur Wikipedia instantanément
+    window.addEventListener('keydown', e => {
+        if(e.key.toLowerCase() === 'p') {
+            const p = document.getElementById('panic');
+            p.style.display = (p.style.display === 'block') ? 'none' : 'block';
+        }
+    });
+
+    document.getElementById('target').addEventListener('keypress', e => e.key === 'Enter' && launch());
+</script>
+</body>
+</html>
