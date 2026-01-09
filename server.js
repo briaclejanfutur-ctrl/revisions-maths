@@ -1,10 +1,16 @@
 const fastify = require('fastify')({ logger: false });
 const axios = require('axios');
+const { PassThrough } = require('stream');
 
 const XOR_KEY = 42;
 let lastTargetOrigin = "";
 
-// Système de décodage furtif
+// Cryptage XOR professionnel
+const encode = (str) => {
+    let xored = str.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ XOR_KEY)).join('');
+    return Buffer.from(xored).toString('base64');
+};
+
 const decode = (str) => {
     try {
         let b64 = Buffer.from(decodeURIComponent(str), 'base64').toString();
@@ -14,46 +20,67 @@ const decode = (str) => {
 
 const HTML_UI = `
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>APEX // GOD MODE</title>
+    <title>APEX ULTRA // CORE</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap" rel="stylesheet">
     <style>
-        body { background: #000; margin: 0; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
-        #nav { background: #080808; padding: 10px 20px; display: flex; gap: 15px; border-bottom: 1px solid #00ffcc33; align-items: center; z-index: 100; }
-        input { flex: 1; background: #000; border: 1px solid #00ffcc55; color: #00ffcc; padding: 10px; border-radius: 5px; outline: none; font-family: monospace; }
-        button { background: #00ffcc; color: #000; border: none; padding: 10px 25px; font-weight: 900; cursor: pointer; border-radius: 5px; transition: 0.3s; }
-        button:hover { box-shadow: 0 0 15px #00ffcc; }
-        iframe { flex: 1; border: none; background: #fff; }
-        #panic { position: fixed; inset: 0; background: white; z-index: 9999; display: none; }
+        body { background: #000; margin: 0; overflow: hidden; height: 100vh; font-family: 'JetBrains Mono', monospace; display: flex; flex-direction: column; }
+        #nav-bar { background: #050505; border-bottom: 2px solid #00ffcc; padding: 12px 25px; display: flex; gap: 20px; align-items: center; z-index: 999; box-shadow: 0 0 20px rgba(0, 255, 204, 0.2); }
+        .logo { color: #00ffcc; font-weight: 800; font-size: 1.2rem; letter-spacing: -1px; text-transform: uppercase; }
+        #urlInput { flex: 1; background: #000; border: 1px solid #333; color: #00ffcc; padding: 10px 20px; border-radius: 8px; outline: none; transition: 0.3s; font-size: 0.9rem; }
+        #urlInput:focus { border-color: #00ffcc; box-shadow: 0 0 10px rgba(0, 255, 204, 0.1); }
+        .btn-connect { background: #00ffcc; color: #000; font-weight: 800; padding: 10px 30px; border-radius: 8px; cursor: pointer; border: none; font-size: 0.8rem; text-transform: uppercase; }
+        .btn-connect:hover { filter: brightness(1.2); box-shadow: 0 0 15px #00ffcc; }
+        #frame-container { flex: 1; position: relative; background: #fff; }
+        iframe { width: 100%; height: 100%; border: none; }
+        #panic-view { position: fixed; inset: 0; background: white; z-index: 10000; display: none; }
     </style>
 </head>
 <body>
-    <div id="nav">
-        <div style="color:#00ffcc; font-weight:bold; font-family:monospace; letter-spacing:2px">APEX_GODMODE</div>
-        <input type="text" id="url" placeholder="URL SÉCURISÉE (YouTube, TikTok, Reddit...)" autocomplete="off">
-        <button onclick="go()">EXECUTE</button>
+    <div id="nav-bar">
+        <div class="logo">Apex_Ultra</div>
+        <input type="text" id="urlInput" placeholder="Saisir l'adresse de destination (ex: youtube.com)..." spellcheck="false">
+        <button class="btn-connect" onclick="launch()">Execute</button>
     </div>
-    <iframe id="view"></iframe>
-    <div id="panic"><iframe src="https://www.google.com/classroom" style="width:100%; height:100%; border:none"></iframe></div>
+
+    <div id="frame-container">
+        <div id="welcome" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#000; color:#111; z-index:10">
+             <div style="font-size:15vw; font-weight:900; letter-spacing:-1vw">APEX</div>
+             <div style="color:#00ffcc; font-size:0.7rem; letter-spacing:1em; margin-top:-2rem">STEALTH BYPASS ACTIVE</div>
+        </div>
+        <iframe id="viewport"></iframe>
+    </div>
+
+    <div id="panic-view"><iframe src="https://www.google.fr/search?q=cours+de+maths+lycee" style="width:100%; height:100%"></iframe></div>
 
     <script>
-        function go() {
-            let v = document.getElementById('url').value.trim();
-            if(!v) return;
-            if(!v.startsWith('http')) v = 'https://' + v;
-            // Cryptage XOR 42
-            const encoded = btoa(v.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ 42)).join(''));
-            document.getElementById('view').src = '/tunnel/' + encodeURIComponent(encoded);
+        const urlInput = document.getElementById('urlInput');
+        const viewport = document.getElementById('viewport');
+        const welcome = document.getElementById('welcome');
+
+        function launch() {
+            let val = urlInput.value.trim();
+            if(!val) return;
+            if(!val.startsWith('http')) val = 'https://' + val;
+
+            // Cryptage XOR (Clé 42)
+            const encoded = btoa(val.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ 42)).join(''));
+            
+            welcome.style.display = 'none';
+            viewport.src = '/tunnel/' + encodeURIComponent(encoded);
         }
-        window.addEventListener('keydown', e => {
+
+        urlInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') launch(); });
+
+        window.addEventListener('keydown', (e) => {
             if(e.key.toLowerCase() === 'p') {
-                const p = document.getElementById('panic');
+                const p = document.getElementById('panic-view');
                 p.style.display = (p.style.display === 'block') ? 'none' : 'block';
             }
         });
-        document.getElementById('url').addEventListener('keypress', e => e.key === 'Enter' && go());
     </script>
 </body>
 </html>
@@ -61,74 +88,63 @@ const HTML_UI = `
 
 fastify.get('/', (req, res) => res.type('text/html').send(HTML_UI));
 
-// LE TUNNEL MAITRE
+// TUNNEL MAITRE (STREAMING PUR)
 fastify.all('/tunnel/*', async (req, res) => {
     const target = decode(req.params['*']);
-    if (!target) return res.status(400).send("Bad Stream");
+    if (!target) return res.status(400).send("Bad Payload");
     lastTargetOrigin = new URL(target).origin;
-    return doProxy(target, req, res);
+    return proxyLogic(target, req, res);
 });
 
-// CATCH-ALL : Répare les liens cassés du site cible
+// CATCH-ALL : Répare les requêtes perdues (images, scripts, api)
 fastify.setNotFoundHandler(async (req, res) => {
-    if (!lastTargetOrigin) return res.status(404).send("Restart Proxy");
-    const repairUrl = lastTargetOrigin + req.url;
-    return doProxy(repairUrl, req, res);
+    if (!lastTargetOrigin || req.url.startsWith('/tunnel/')) return res.status(404).send("Target Lost");
+    return proxyLogic(lastTargetOrigin + req.url, req, res);
 });
 
-async function doProxy(url, req, res) {
+async function proxyLogic(url, req, res) {
     try {
-        // ON RÉCUPÈRE LES HEADERS DU NAVIGATEUR (IMPORTANT POUR LA VIDÉO)
-        const requestHeaders = { ...req.headers };
-        delete requestHeaders.host;
-        delete requestHeaders.referer;
-
         const response = await axios({
             method: req.method,
             url: url,
             data: req.body,
             responseType: 'stream',
             headers: {
-                ...requestHeaders,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': lastTargetOrigin + '/'
+                'Range': req.headers.range // Crucial pour la lecture vidéo (YouTube/TikTok)
             },
             validateStatus: false,
-            maxRedirects: 10
+            maxRedirects: 15
         });
 
-        const responseHeaders = { ...response.headers };
+        const headers = { ...response.headers };
+        delete headers['content-security-policy'];
+        delete headers['x-frame-options'];
+        delete headers['content-encoding'];
         
-        // --- BYPASS DE SÉCURITÉ ---
-        delete responseHeaders['content-security-policy'];
-        delete responseHeaders['x-frame-options'];
-        delete responseHeaders['content-encoding'];
-        delete responseHeaders['transfer-encoding'];
-
-        res.headers(responseHeaders);
         res.status(response.status);
+        res.headers(headers);
 
-        // Injection HTML pour forcer les liens
-        if (responseHeaders['content-type'] && responseHeaders['content-type'].includes('text/html')) {
-            let chunks = [];
-            response.data.on('data', chunk => chunks.push(chunk));
+        // Si c'est du HTML, on injecte une base URL pour les liens
+        if (headers['content-type'] && headers['content-type'].includes('text/html')) {
+            const pt = new PassThrough();
+            let html = '';
+            response.data.on('data', chunk => html += chunk.toString());
             response.data.on('end', () => {
-                let html = Buffer.concat(chunks).toString();
-                const base = `<base href="${lastTargetOrigin}/">`;
-                const script = `<script>
-                    // Empêcher le site de sortir du proxy
-                    window.onbeforeunload = function() { return null; };
-                </script>`;
-                html = html.replace('<head>', '<head>' + base + script);
+                const injection = `<base href="${lastTargetOrigin}/"><script>console.log("Apex Ultra Active");</script>`;
+                html = html.replace('<head>', '<head>' + injection);
                 res.send(html);
             });
         } else {
-            // TRANSFERT EN DIRECT (INDISPENSABLE POUR LES VIDÉOS TIKTOK/YOUTUBE)
+            // Pour les vidéos/images, on "pipe" directement le flux (ultra rapide)
             return res.send(response.data);
         }
     } catch (e) {
-        return res.status(500).send("Apex Godmode Error: " + e.message);
+        return res.status(500).send("Apex Core Error: " + e.message);
     }
 }
 
-fastify.listen({ port: process.env.PORT || 10000, host: '0.0.0.0' });
+const port = process.env.PORT || 10000;
+fastify.listen({ port: port, host: '0.0.0.0' }, () => {
+    console.log("APEX ULTRA SYSTEM ONLINE");
+});
