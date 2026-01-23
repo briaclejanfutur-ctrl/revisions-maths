@@ -2,9 +2,9 @@ const fastify = require('fastify')({ logger: false });
 const axios = require('axios');
 
 const XOR_KEY = 42;
-let lastTarget = "https://discord.com";
+let currentTarget = "https://discord.com";
 
-// Décodeur ultra-robuste
+// Décodeur furtif
 const decode = (str) => {
     try {
         let b = Buffer.from(decodeURIComponent(str), 'base64').toString();
@@ -17,34 +17,27 @@ const HTML_UI = `
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>ENT - Révisions</title>
+    <title>ENT - Révisions 2026</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { background: #09090b; margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-        #nav { background: #18181b; padding: 10px 20px; display: flex; gap: 15px; align-items: center; border-bottom: 2px solid #5865f2; }
-        input { flex: 1; background: #000; border: 1px solid #27272a; color: #fff; padding: 8px 15px; border-radius: 6px; outline: none; font-size: 13px; }
-        button { background: #5865f2; color: white; padding: 8px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; border: none; font-size: 12px; }
-        #view-area { flex: 1; background: #313338; position: relative; }
-        iframe { width: 100%; height: 100%; border: none; }
-    </style>
 </head>
-<body>
-    <div id="nav">
-        <div style="color:#5865f2; font-weight:900; font-size:18px;">TITAN_V14</div>
-        <input type="text" id="url" placeholder="Entrez l'URL (ex: https://discord.com/login) ..." autocomplete="off">
-        <button onclick="go()">OUVRIR LE TUNNEL</button>
+<body style="background:#09090b; margin:0; height:100vh; display:flex; flex-direction:column; overflow:hidden;">
+    <div style="background:#18181b; padding:10px 20px; display:flex; gap:15px; align-items:center; border-bottom:2px solid #5865f2;">
+        <div style="color:#5865f2; font-weight:900; font-size:18px;">VOID_V15</div>
+        <input type="text" id="url" placeholder="Cible (ex: https://discord.com/app)" style="flex:1; background:#000; border:1px solid #27272a; color:#fff; padding:8px 15px; border-radius:6px; outline:none;">
+        <button onclick="go()" style="background:#5865f2; color:white; padding:8px 20px; border-radius:6px; font-weight:bold; cursor:pointer; border:none;">TRANSPARENCE</button>
     </div>
-    <div id="view-area"><iframe id="vp" name="vp"></iframe></div>
+    <div style="flex:1; position:relative; background:#313338;">
+        <iframe id="vp" style="width:100%; height:100%; border:none;"></iframe>
+    </div>
     <script>
         function go() {
             let v = document.getElementById('url').value.trim();
             if(!v) return;
             if(!v.startsWith('http')) v = 'https://' + v;
             const enc = btoa(v.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ 42)).join(''));
-            document.getElementById('vp').src = window.location.origin + '/gate/' + encodeURIComponent(enc);
+            document.getElementById('vp').src = window.location.origin + '/v/' + encodeURIComponent(enc);
         }
         document.getElementById('url').addEventListener('keypress', e => e.key === 'Enter' && go());
-        window.onkeydown = e => { if(e.key === "Escape") window.location.href = "https://www.google.fr"; };
     </script>
 </body>
 </html>
@@ -52,27 +45,21 @@ const HTML_UI = `
 
 fastify.get('/', (req, res) => res.type('text/html').send(HTML_UI));
 
-// LE TUNNEL (VERSION AXIOS-TITAN)
-fastify.all('/gate/*', async (req, res) => {
+// LE TUNNEL MIROIR
+fastify.all('/v/*', async (req, res) => {
     const target = decode(req.params['*']);
-    if (!target) return res.status(400).send("Erreur de décodage");
-    
-    lastTarget = new URL(target).origin;
-    return proxyCore(target, req, res);
+    if (!target) return res.status(400).send("ERR_DECODE");
+    currentTarget = new URL(target).origin;
+    return tunnel(target, req, res);
 });
 
-// CATCH-ALL (Répare tous les liens internes sans casser le JS)
+// CATCH-ALL (Indispensable pour Discord)
 fastify.setNotFoundHandler(async (req, res) => {
-    if (!lastTarget || req.url.includes('favicon')) return res.status(404).send();
-    
-    // Détection intelligente du domaine Discord
-    let finalUrl = lastTarget + req.url;
-    if (req.url.includes('assets') || req.url.includes('.js')) finalUrl = "https://discord.com" + req.url;
-    
-    return proxyCore(finalUrl, req, res);
+    if (!currentTarget || req.url.includes('favicon')) return res.status(404).send();
+    return tunnel(currentTarget + req.url, req, res);
 });
 
-async function proxyCore(url, req, res) {
+async function tunnel(url, req, res) {
     try {
         const response = await axios({
             method: req.method,
@@ -81,34 +68,34 @@ async function proxyCore(url, req, res) {
             responseType: 'stream',
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': '*/*',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
                 'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache',
-                'Referer': lastTarget + '/',
-                'Origin': lastTarget
+                'Referer': currentTarget + '/',
+                'Origin': currentTarget,
+                'X-Discord-Locale': 'fr',
             },
             validateStatus: false,
-            timeout: 20000
+            maxRedirects: 20
         });
 
         const headers = { ...response.headers };
+        // Destruction des barrières
         delete headers['content-security-policy'];
         delete headers['x-frame-options'];
         delete headers['content-encoding'];
-        delete headers['transfer-encoding'];
 
         res.status(response.status);
         res.headers(headers);
 
-        // Injection HTML minimaliste (on ne touche à rien d'autre pour la stabilité)
         if (headers['content-type'] && headers['content-type'].includes('text/html')) {
-            const chunks = [];
+            let chunks = [];
             response.data.on('data', chunk => chunks.push(chunk));
             response.data.on('end', () => {
                 let html = Buffer.concat(chunks).toString();
-                const injection = `<base href="${lastTarget}/"><script>
+                const injection = `<base href="${currentTarget}/"><script>
                     window.parent = window; window.top = window;
+                    // On empêche Discord de détecter le proxy
+                    delete window.navigator.webdriver;
                 </script>`;
                 res.send(html.replace('<head>', '<head>' + injection));
             });
@@ -116,8 +103,8 @@ async function proxyCore(url, req, res) {
             return res.send(response.data);
         }
     } catch (e) {
-        // En cas d'erreur, on tente une redirection directe
-        res.status(200).send(`<h1>Relance du tunnel...</h1><script>setTimeout(()=>location.reload(), 1000);</script>`);
+        // Fallback ultime : si axios échoue, on renvoie une erreur propre
+        res.status(500).send("SERVICE_TEMPORARILY_OFFLINE_BY_TARGET");
     }
 }
 
