@@ -1,9 +1,13 @@
 const fastify = require('fastify')({ logger: false });
 const axios = require('axios');
-const { PassThrough } = require('stream');
 
 const XOR_KEY = 42;
-let lastTarget = "https://discord.com";
+let lastTargetOrigin = "https://discord.com";
+
+const encode = (url) => {
+    const xored = url.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ XOR_KEY)).join('');
+    return Buffer.from(xored).toString('base64');
+};
 
 const decode = (str) => {
     try {
@@ -17,47 +21,33 @@ const HTML_UI = `
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>ENT - Portail de Communication Sécurisé</title>
+    <title>ENT - Portail Communication</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background: #09090b; margin: 0; font-family: 'Inter', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-        #nav { background: #18181b; padding: 10px 20px; display: flex; gap: 15px; align-items: center; border-bottom: 2px solid #5865f2; z-index: 1000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        input { flex: 1; background: #09090b; border: 1px solid #27272a; color: #a1a1aa; padding: 8px 15px; border-radius: 6px; outline: none; font-size: 13px; transition: 0.2s; }
-        input:focus { border-color: #5865f2; color: white; }
-        button { background: #5865f2; color: white; padding: 8px 20px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
-        button:hover { background: #4752c4; box-shadow: 0 0 15px rgba(88, 101, 242, 0.4); }
-        #view-area { flex: 1; position: relative; background: #313338; }
-        iframe { width: 100%; height: 100%; border: none; visibility: visible; }
-        #loader { position: absolute; top:0; left:0; width:100%; height:3px; background: #5865f2; display:none; animation: slide 2s infinite; }
-        @keyframes slide { 0% { left:-100%; width:100%; } 100% { left:100%; width:100%; } }
+        body { background: #09090b; margin: 0; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        #nav { background: #18181b; padding: 10px 20px; display: flex; gap: 15px; align-items: center; border-bottom: 2px solid #5865f2; z-index: 1000; }
+        input { flex: 1; background: #09090b; border: 1px solid #27272a; color: white; padding: 8px 15px; border-radius: 6px; outline: none; }
+        button { background: #5865f2; color: white; padding: 8px 25px; border-radius: 6px; font-weight: bold; cursor: pointer; border: none; font-size: 12px; }
+        #view-area { flex: 1; background: #313338; position: relative; }
+        iframe { width: 100%; height: 100%; border: none; }
     </style>
 </head>
 <body>
     <div id="nav">
-        <div style="color:#5865f2; font-weight:900; font-size:18px;">PHANTOM_V12</div>
-        <input type="text" id="target" placeholder="Cible (ex: discord.com/app)..." autocomplete="off">
-        <button onclick="launch()">Lancer le Tunnel</button>
+        <div style="color:#5865f2; font-weight:900; font-size:18px;">PHANTOM_V13</div>
+        <input type="text" id="url" placeholder="Saisir https://discord.com/login ..." autocomplete="off">
+        <button onclick="go()">OUVRIR LE TUNNEL</button>
     </div>
-    <div id="view-area">
-        <div id="loader"></div>
-        <iframe id="viewport"></iframe>
-    </div>
+    <div id="view-area"><iframe id="vp"></iframe></div>
     <script>
-        const vp = document.getElementById('viewport');
-        const loader = document.getElementById('loader');
-
-        function launch() {
-            let url = document.getElementById('target').value.trim();
-            if(!url) return;
-            if(!url.startsWith('http')) url = 'https://' + url;
-            loader.style.display = 'block';
-            const encoded = btoa(url.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ 42)).join(''));
-            vp.src = window.location.origin + '/gate/' + encodeURIComponent(encoded);
+        function go() {
+            let v = document.getElementById('url').value.trim();
+            if(!v) return;
+            if(!v.startsWith('http')) v = 'https://' + v;
+            const enc = btoa(v.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ 42)).join(''));
+            document.getElementById('vp').src = window.location.origin + '/gate/' + encodeURIComponent(enc);
         }
-
-        vp.onload = () => { loader.style.display = 'none'; };
-        document.getElementById('target').addEventListener('keypress', e => e.key === 'Enter' && launch());
-        window.addEventListener('keydown', e => { if(e.key.toLowerCase() === 'p') window.location.href = "https://www.google.fr"; });
+        document.getElementById('url').addEventListener('keypress', e => e.key === 'Enter' && go());
     </script>
 </body>
 </html>
@@ -65,33 +55,24 @@ const HTML_UI = `
 
 fastify.get('/', (req, res) => res.type('text/html').send(HTML_UI));
 
-// LE TUNNEL MAITRE (LOGIQUE DE REWRITING PROFONDE)
 fastify.all('/gate/*', async (req, res) => {
     const target = decode(req.params['*']);
-    if (!target) return res.status(400).send("Flux invalide");
-    
-    lastTarget = new URL(target).origin;
-    return proxyRequest(target, req, res);
+    if (!target) return res.status(400).send("Lien corrompu");
+    lastTargetOrigin = new URL(target).origin;
+    return proxy(target, req, res);
 });
 
-// CATCH-ALL (Indispensable pour charger les scripts de login de Discord)
 fastify.setNotFoundHandler(async (req, res) => {
-    if (!lastTarget || req.url.includes('favicon')) return res.status(404).send();
-    return proxyRequest(lastTarget + req.url, req, res);
+    if (!lastTargetOrigin || req.url.includes('favicon')) return res.status(404).send();
+    return proxy(lastTargetOrigin + req.url, req, res);
 });
 
-async function proxyRequest(url, req, res) {
+async function proxy(url, req, res) {
     try {
         const response = await axios({
-            method: req.method,
-            url: url,
-            data: req.body,
-            responseType: 'stream',
-            headers: {
-                ...req.headers,
-                'host': new URL(url).host,
-                'referer': lastTarget,
-                'origin': lastTarget,
+            method: req.method, url: url, data: req.body, responseType: 'arraybuffer',
+            headers: { 
+                ...req.headers, 'host': new URL(url).host, 'referer': lastTargetOrigin, 'origin': lastTargetOrigin,
                 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             },
             validateStatus: false
@@ -101,46 +82,27 @@ async function proxyRequest(url, req, res) {
         delete headers['content-security-policy'];
         delete headers['x-frame-options'];
         delete headers['content-encoding'];
-
         res.status(response.status);
         res.headers(headers);
 
-        // INJECTION DU SCRIPT "GHOST" (Le cerveau du proxy)
         if (headers['content-type'] && headers['content-type'].includes('text/html')) {
-            const pt = new PassThrough();
-            let html = '';
-            response.data.on('data', chunk => html += chunk.toString());
-            response.data.on('end', () => {
-                const hook = `
-                <base href="${lastTarget}/">
-                <script>
-                (function() {
-                    const KEY = 42;
-                    const PROXY = (u) => {
-                        if(!u || u.startsWith('data:') || u.startsWith('blob:') || u.includes(window.location.host)) return u;
-                        try {
-                            const full = new URL(u, "${lastTarget}").href;
-                            return window.location.origin + '/gate/' + btoa(full.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ KEY)).join(''));
-                        } catch(e) { return u; }
-                    };
-
-                    // Détournement des fonctions de navigation pour le login
-                    const _f = window.fetch; window.fetch = (...a) => { a[0] = PROXY(a[0]); return _f(...a); };
-                    const _o = XMLHttpRequest.prototype.open; XMLHttpRequest.prototype.open = function() { arguments[1] = PROXY(arguments[1]); return _o.apply(this, arguments); };
-                    
-                    // Empêcher Discord de détecter l'iframe
-                    Object.defineProperty(window, 'parent', { get: () => window });
-                    Object.defineProperty(window, 'top', { get: () => window });
-                })();
-                </script>`;
-                res.send(html.replace('<head>', '<head>' + hook));
+            let html = response.data.toString();
+            
+            // LA MAGIE : On remplace tous les liens du code source par des liens proxifiés
+            html = html.replace(/(src|href|action)=["'](\/|https?:\/\/)([^"']+)["']/g, (match, p1, p2, p3) => {
+                let absoluteUrl = p2.startsWith('http') ? p2 + p3 : lastTargetOrigin + p2 + p3;
+                return `${p1}="${window.location.origin}/gate/${encode(absoluteUrl)}"`;
             });
-        } else {
-            return res.send(response.data);
+
+            const injection = `<base href="${lastTargetOrigin}/"><script>
+                // Neutralisation des scripts de détection d'iframe
+                Object.defineProperty(window, 'parent', { get: () => window });
+                Object.defineProperty(window, 'top', { get: () => window });
+            </script>`;
+            return res.send(html.replace('<head>', '<head>' + injection));
         }
-    } catch (e) {
-        return res.status(500).send("Erreur de Tunnel PHANTOM");
-    }
+        return res.send(response.data);
+    } catch (e) { return res.status(500).send("Erreur de Tunnel PHANTOM"); }
 }
 
 fastify.listen({ port: process.env.PORT || 10000, host: '0.0.0.0' });
