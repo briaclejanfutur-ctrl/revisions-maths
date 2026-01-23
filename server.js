@@ -2,8 +2,8 @@ const fastify = require('fastify')({ logger: false });
 const axios = require('axios');
 
 const XOR_KEY = 42;
+let lastDomain = "https://discord.com"; // Par défaut sur Discord
 
-// Décodeur ultra-rapide
 const decode = (str) => {
     try {
         let b = Buffer.from(decodeURIComponent(str), 'base64').toString();
@@ -16,33 +16,53 @@ const HTML_UI = `
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>ENT - Accès Communication</title>
+    <title>ENT - Portail de Communication</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background: #36393f; margin: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-        #nav { background: #2f3136; padding: 10px 20px; display: flex; gap: 15px; align-items: center; border-bottom: 1px solid #202225; }
-        .status { width: 10px; height: 10px; background: #3ba55c; border-radius: 50%; box-shadow: 0 0 10px #3ba55c; }
-        button { background: #5865f2; color: white; padding: 8px 25px; border-radius: 4px; font-weight: bold; border: none; cursor: pointer; transition: 0.2s; }
-        button:hover { background: #4752c4; }
-        iframe { flex: 1; border: none; background: #36393f; }
+        body { background: #0b0e14; margin: 0; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        #nav { background: #1a1d23; padding: 12px 20px; display: flex; gap: 15px; align-items: center; border-bottom: 2px solid #5865f2; box-shadow: 0 4px 15px rgba(0,0,0,0.4); z-index: 9999; }
+        input { flex: 1; background: #0b0e14; border: 1px solid #333; color: #5865f2; padding: 10px 15px; border-radius: 6px; outline: none; font-size: 14px; transition: 0.3s; }
+        input:focus { border-color: #5865f2; box-shadow: 0 0 10px rgba(88, 101, 242, 0.2); }
+        button { background: #5865f2; color: white; padding: 10px 25px; border-radius: 6px; font-weight: bold; border: none; cursor: pointer; transition: 0.2s; text-transform: uppercase; font-size: 12px; }
+        button:hover { background: #4752c4; transform: scale(1.02); }
+        #container { flex: 1; position: relative; background: #36393f; }
+        iframe { width: 100%; height: 100%; border: none; }
+        #loading { position: absolute; top:0; left:0; width:100%; height:3px; background: #5865f2; display:none; animation: load 2s infinite; }
+        @keyframes load { 0% { left:-100%; width:100%; } 100% { left:100%; width:100%; } }
     </style>
 </head>
 <body>
     <div id="nav">
-        <div class="status"></div>
-        <div style="color:white; font-weight:bold; font-size:14px; letter-spacing:1px">DISCORD_SECURE_TUNNEL</div>
-        <div style="flex:1"></div>
-        <button onclick="launch()">DÉMARRER DISCORD</button>
+        <div style="color:#5865f2; font-weight:900; font-size:20px; letter-spacing:-1px">ELITE_V11</div>
+        <input type="text" id="targetUrl" placeholder="Entrez une URL ou 'discord.com'..." autocomplete="off">
+        <button onclick="launch()">Exécuter</button>
     </div>
-    <iframe id="view"></iframe>
+    <div id="container">
+        <div id="loading"></div>
+        <iframe id="viewport"></iframe>
+    </div>
+
     <script>
+        const vp = document.getElementById('viewport');
+        const loader = document.getElementById('loading');
+
         function launch() {
-            const target = "https://discord.com/app";
-            const enc = btoa(target.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ 42)).join(''));
-            document.getElementById('view').src = '/discord/' + encodeURIComponent(enc);
+            let url = document.getElementById('targetUrl').value.trim();
+            if(!url) return;
+            if(!url.startsWith('http')) url = 'https://' + url;
+            
+            loader.style.display = 'block';
+            
+            // Cryptage XOR 42
+            const encoded = btoa(url.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ 42)).join(''));
+            vp.src = window.location.origin + '/tunnel/' + encodeURIComponent(encoded);
         }
-        // Panique (Touche P)
-        window.addEventListener('keydown', e => { if(e.key.toLowerCase() === 'p') window.location.href = "https://www.google.fr"; });
+
+        document.getElementById('targetUrl').addEventListener('keypress', e => { if(e.key === 'Enter') launch(); });
+        vp.onload = () => { loader.style.display = 'none'; };
+
+        // Touche Panique (ESC)
+        window.onkeydown = (e) => { if(e.key === "Escape") window.location.href = "https://www.google.fr"; };
     </script>
 </body>
 </html>
@@ -50,26 +70,47 @@ const HTML_UI = `
 
 fastify.get('/', (req, res) => res.type('text/html').send(HTML_UI));
 
-// LE TUNNEL SPÉCIAL DISCORD
-fastify.all('/discord/*', async (req, res) => {
+// TUNNEL MAITRE (DÉDIÉ DISCORD)
+fastify.all('/tunnel/*', async (req, res) => {
     const target = decode(req.params['*']);
-    if (!target) return res.status(400).send("Bad Payload");
+    if (!target) return res.status(400).send("Flux corrompu");
+    
+    const urlObj = new URL(target);
+    lastDomain = urlObj.origin;
 
+    return proxyRequest(target, req, res);
+});
+
+// RÉPARATEUR DE LIENS AUTOMATIQUE (CATCH-ALL)
+fastify.setNotFoundHandler(async (req, res) => {
+    if (!lastDomain || req.url.includes('favicon')) return res.status(404).send();
+    
+    // Si Discord demande un asset (image/js), on devine le bon domaine
+    let target = lastDomain + req.url;
+    if (req.url.includes('avatars') || req.url.includes('icons')) {
+        target = "https://cdn.discordapp.com" + req.url;
+    }
+
+    return proxyRequest(target, req, res);
+});
+
+async function proxyRequest(url, req, res) {
     try {
         const response = await axios({
             method: req.method,
-            url: target,
+            url: url,
             data: req.body,
-            responseType: 'stream',
+            responseType: 'arraybuffer',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://discord.com/',
-                'Origin': 'https://discord.com'
+                ...req.headers,
+                'host': new URL(url).host,
+                'referer': lastDomain,
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             },
-            validateStatus: false
+            validateStatus: false,
+            timeout: 15000
         });
 
-        // Suppression des headers de blocage
         const headers = { ...response.headers };
         delete headers['content-security-policy'];
         delete headers['x-frame-options'];
@@ -78,57 +119,40 @@ fastify.all('/discord/*', async (req, res) => {
         res.status(response.status);
         res.headers(headers);
 
-        // Injection du script de "Cimentation" pour Discord
+        // INJECTION DU SCRIPT DE RÉÉCRITURE (POUR QUE LES LIENS RESTENT DANS LE TUNNEL)
         if (headers['content-type'] && headers['content-type'].includes('text/html')) {
-            let chunks = [];
-            response.data.on('data', chunk => chunks.push(chunk));
-            response.data.on('end', () => {
-                let html = Buffer.concat(chunks).toString();
-                const hook = `
-                <base href="https://discord.com/">
-                <script>
-                (function() {
-                    const KEY = 42;
-                    // Force toutes les requêtes internes de Discord vers notre tunnel
-                    const _f = window.fetch;
-                    window.fetch = (...args) => {
-                        if(args[0].includes('discord') && !args[0].includes(window.location.host)) {
-                            const url = new URL(args[0], 'https://discord.com').href;
-                            args[0] = window.location.origin + '/discord/' + btoa(url.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ KEY)).join(''));
-                        }
-                        return _f(...args);
-                    };
-                })();
-                </script>`;
-                res.send(html.replace('<head>', '<head>' + hook));
-            });
-        } else {
-            return res.send(response.data);
+            let html = response.data.toString();
+            const hook = `
+            <base href="${url}/">
+            <script>
+            (function() {
+                const KEY = 42;
+                const PROXY = (u) => {
+                    if(!u || u.startsWith('data:') || u.startsWith('blob:') || u.includes(window.location.host)) return u;
+                    try {
+                        const full = new URL(u, window.location.href).href;
+                        return window.location.origin + '/tunnel/' + btoa(full.split('').map(c => String.fromCharCode(c.charCodeAt(0) ^ KEY)).join(''));
+                    } catch(e) { return u; }
+                };
+                
+                // On détourne FETCH et XMLHttpRequest pour Discord
+                const _f = window.fetch; window.fetch = (...a) => { a[0] = PROXY(a[0]); return _f(...a); };
+                const _o = XMLHttpRequest.prototype.open; XMLHttpRequest.prototype.open = function() { arguments[1] = PROXY(arguments[1]); return _o.apply(this, arguments); };
+                
+                // On détourne les clics
+                document.addEventListener('click', e => {
+                    const a = e.target.closest('a');
+                    if(a && a.href) { e.preventDefault(); window.location.href = PROXY(a.href); }
+                }, true);
+            })();
+            </script>`;
+            return res.send(html.replace('<head>', '<head>' + hook));
         }
-    } catch (e) {
-        return res.status(500).send("Discord Tunnel Error");
-    }
-});
 
-// Réparateur de liens (Catch-all pour les images et le JS de Discord)
-fastify.setNotFoundHandler(async (req, res) => {
-    let domain = "https://discord.com";
-    if (req.url.includes('assets') || req.url.includes('.js') || req.url.includes('.css')) {
-        domain = "https://discord.com";
-    } else if (req.url.includes('avatars') || req.url.includes('icons')) {
-        domain = "https://cdn.discordapp.com";
-    }
-
-    try {
-        const response = await axios({
-            method: req.method,
-            url: domain + req.url,
-            responseType: 'stream',
-            validateStatus: false
-        });
-        res.headers(response.headers);
         return res.send(response.data);
-    } catch (e) { res.status(404).send(); }
-});
+    } catch (e) {
+        return res.status(500).send("Erreur de tunnel Discord : " + e.message);
+    }
+}
 
 fastify.listen({ port: process.env.PORT || 10000, host: '0.0.0.0' });
